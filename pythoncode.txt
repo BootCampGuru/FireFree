@@ -1,0 +1,504 @@
+#!/usr/bin/python
+
+import RPi.GPIO as GPIO
+import requests
+import time
+import json
+import smtplib
+from pprint import pprint
+
+import requests
+import smtplib
+
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+
+
+
+def send_email(user, pwd, recipient, subject, body):
+    import smtplib
+
+    gmail_user = user
+    gmail_pwd = pwd
+    FROM = user
+    TO = recipient if type(recipient) is list else [recipient]
+    SUBJECT = subject
+    TEXT = body
+
+    # Prepare actual message
+    message = "Heating crib"
+    try:
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.ehlo()
+        server.starttls()
+        server.login(gmail_user, gmail_pwd)
+        server.sendmail(FROM, TO, message)
+        server.close()
+        print 'successfully sent the mail'
+    except:
+        print "failed to send mail"
+
+send_email("ranjanbiswasgwu@gmail.com", "Sagat99!", "biswasrk@gwu.edu", "Baby Alert", "Crib getting hot")
+
+GPIO.setwarnings(False)
+fixed_interval = 5
+counter = 0
+GPIO.setmode(GPIO.BOARD)
+GPIO.setup(16, GPIO.OUT)
+GPIO.setup(18,GPIO.OUT)
+entry = True
+data = []
+upperLimit = 0
+lowerLimit = 0
+BeepPin = 22    # pin22
+LeadPin = 11
+PIR_OUT_PIN = 15
+
+#distance sensor
+def checkdist():
+	GPIO.output(15, GPIO.HIGH)
+	time.sleep(0.000015)
+	GPIO.output(15, GPIO.LOW)
+	while not GPIO.input(7):
+		pass
+	t1 = time.time()
+	while GPIO.input(7):
+		pass
+	t2 = time.time()
+	return (t2-t1)*340/2
+
+GPIO.setup(15,GPIO.OUT,initial=GPIO.LOW)
+GPIO.setup(7,GPIO.IN)
+
+#PIR sensor
+def pirsetup():
+    GPIO.setmode(GPIO.BOARD)
+    GPIO.setup(PIR_OUT_PIN, GPIO.IN)
+
+#end PIR
+
+#Keypad logic
+
+
+#Motor Functions
+
+
+def motorStart():
+        GPIO.output(16, GPIO.HIGH)
+        pwm_B.start(100)
+        pwm_B.ChangeDutyCycle(25)
+        
+
+def motorStop():
+	GPIO.output(16, GPIO.LOW)
+
+global pwm_B
+pwm_B = GPIO.PWM(18, 2000) # create pwm and set frequece to 2KHz
+
+
+
+#end Functions
+
+#LED functions
+
+def LedSetup():
+        GPIO.setmode(GPIO.BOARD)
+        GPIO.setup(LeadPin, GPIO.OUT)
+        GPIO.output(LeadPin, GPIO.HIGH)
+        GPIO.output(LeadPin, GPIO.LOW)
+        time.sleep(0.5)
+        GPIO.output(LeadPin, GPIO.HIGH)
+        time.sleep(0.5)
+
+def LedLoop():
+        try:
+                while True:
+                        print '...Temperature Too High'
+                        GPIO.output(LeadPin, GPIO.LOW)
+                        time.sleep(0.5)
+                        GPIO.output(LeadPin, GPIO.HIGH)
+                        time.sleep(0.5)
+        except KeyboardInterrupt:
+                GPIO.output(LeadPin, GPIO.HIGH)
+                GPIO.cleanup()
+
+#Buzzer Functions
+
+def setup():
+	GPIO.setmode(GPIO.BOARD)        # Numbers pins by physical location
+	GPIO.setup(BeepPin, GPIO.OUT)   # Set pin mode as output
+	GPIO.output(BeepPin, GPIO.HIGH) # Set pin to high(+3.3V) to off the beep
+
+def loop():
+	
+		GPIO.output(BeepPin, GPIO.LOW)
+		time.sleep(0.1)
+		GPIO.output(BeepPin, GPIO.HIGH)
+		time.sleep(0.1)
+def destroy():
+	GPIO.output(BeepPin, GPIO.HIGH) 
+
+#end Buzzer
+
+
+#Reset Kozy
+
+#end Reset
+
+#Keypad Matrix Functions
+
+
+class keypad():
+    # CONSTANTS 
+    KEYPAD = [
+    [1,2,3,"A"],
+    [4,5,6,"B"],
+    [7,8,9,"C"],
+    ["*",0,"#","D"]
+    ]
+     
+    ROW         = [36,37,38,40]
+    COLUMN      = [29,31,32,33]
+     
+    def __init__(self):
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BOARD)
+     
+    def getKey(self):
+         
+        # Set all columns as output low
+        for j in range(len(self.COLUMN)):
+            GPIO.setup(self.COLUMN[j], GPIO.OUT)
+            GPIO.output(self.COLUMN[j], GPIO.LOW)
+         
+        # Set all rows as input
+        for i in range(len(self.ROW)):
+            GPIO.setup(self.ROW[i], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+         
+        # Scan rows for pushed key/button
+        # A valid key press should set "rowVal"  between 0 and 3.
+        rowVal = -1
+        for i in range(len(self.ROW)):
+            tmpRead = GPIO.input(self.ROW[i])
+            if tmpRead == 0:
+                rowVal = i
+                 
+        # if rowVal is not 0 thru 3 then no button was pressed and we can exit
+        if rowVal < 0 or rowVal > 3:
+            self.exit()
+            return
+         
+        # Convert columns to input
+        for j in range(len(self.COLUMN)):
+			GPIO.setup(self.COLUMN[j], GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+         
+        # Switch the i-th row found from scan to output
+        GPIO.setup(self.ROW[rowVal], GPIO.OUT)
+        GPIO.output(self.ROW[rowVal], GPIO.HIGH)
+
+        # Scan columns for still-pushed key/button
+        # A valid key press should set "colVal"  between 0 and 2.
+        colVal = -1
+        for j in range(len(self.COLUMN)):
+            tmpRead = GPIO.input(self.COLUMN[j])
+            if tmpRead == 1:
+                colVal=j
+                 
+        # if colVal is not 0 thru 2 then no button was pressed and we can exit
+        if colVal < 0 or colVal > 3:
+            self.exit()
+            return
+ 
+        # Return the value of the key pressed
+        self.exit()
+        return self.KEYPAD[rowVal][colVal]
+         
+    def exit(self):
+        # Reinitialize all rows and columns as input at exit
+        for i in range(len(self.ROW)):
+                GPIO.setup(self.ROW[i], GPIO.IN, pull_up_down=GPIO.PUD_UP) 
+        for j in range(len(self.COLUMN)):
+                GPIO.setup(self.COLUMN[j], GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+
+#end keypad logic
+
+if __name__ == '__main__':
+    # Initialize the keypad class
+    print "Please enter your start and end temperature points:"
+    kp = keypad()
+    # Loop while waiting for a keypress
+    while entry:
+        digit = None
+        while digit == None:
+            digit = kp.getKey()
+            
+            if digit == "*":
+                entry = False
+        # append the result
+        print digit
+        data.append(digit)
+        time.sleep(0.5)
+   
+                
+lowerLimit = str(data[0]) + str(data[1])
+upperLimit = str(data[2]) + str(data[3])
+
+#convert them to numbers
+
+lowerLimitNum = int(lowerLimit)
+upperLimitNum = int(upperLimit)
+
+print "Lower Threshold set at " + lowerLimit + " F"
+print "Upper Threshold set at " + upperLimit + " F"
+
+
+def motorStop():
+        pwm_B = GPIO.PWM(18, 2) 
+	GPIO.output(16, GPIO.LOW)
+	GPIO.output(18, GPIO.LOW)
+
+def fanCheck():
+                pwm_B = GPIO.PWM(18, 2000) 
+                GPIO.output(16, GPIO.HIGH)
+                pwm_B.start(100)
+                pwm_B.ChangeDutyCycle(100-50)
+                time.sleep(2)
+                motorStop()
+
+
+
+firebase_url = 'https://fir-kings.firebaseio.com/'
+
+
+labelcounter = 0;
+tempInitialValue = 30
+movementInitialValue = 0
+humidityInitialValue = 0
+
+fanTimer = 0;
+alarmTimer = 0;
+
+start = False
+startLimit = 0
+endLimit = 100
+alertCounter = 0;
+
+print('Buzzer check')
+setup()
+time.sleep(0.5)
+GPIO.output(BeepPin, GPIO.LOW)
+print('LED check')
+LedSetup()
+print('Movement PIR')
+#pirsetup()
+
+chartdata =  {
+    'labels': [0],
+    'datasets': [{
+      'label': 'temperature',
+      'data': [0],
+      'backgroundColor': "rgba(153,255,51,0.4)"
+    }, {
+      'label': 'humidity',
+      'data': [0],
+      'backgroundColor': "rgba(255,153,0,0.4)"
+    }, {
+      'label': 'movement',
+      'data': [0],
+      'backgroundColor': "rgba(153,255,151,0.4)"
+    }
+    ]
+  }
+
+
+
+#Temperature sensor function
+def TempSensor():
+    tempchannel = 12
+    j = 0
+
+    GPIO.setmode(GPIO.BOARD)
+    time.sleep(1)
+    GPIO.setup(tempchannel, GPIO.OUT)
+    GPIO.output(tempchannel, GPIO.LOW)
+    time.sleep(0.02) 
+    GPIO.output(tempchannel, GPIO.HIGH)
+    GPIO.setup(tempchannel, GPIO.IN)
+    
+    while GPIO.input(tempchannel) == GPIO.LOW:
+	continue
+
+    while GPIO.input(tempchannel) == GPIO.HIGH:
+	continue
+
+    while j < 40:
+	k = 0
+	while GPIO.input(tempchannel) == GPIO.LOW:
+		continue
+
+	while GPIO.input(tempchannel) == GPIO.HIGH:
+		k += 1
+		if k > 100:
+			break
+
+	if k < 8:
+		data.append(0)
+	else:
+		data.append(1)
+
+	j += 1
+
+	print "Temperature sensor is working"
+	print "Monitoring started"
+
+	#GPIO.cleanup()
+
+  
+try:
+        while 1:
+                try:
+                        json_str = json.dumps(chartdata)
+                        json_python = json.loads(json_str);	
+                        time.sleep(fixed_interval)
+                        labelcounter = labelcounter + 5
+                        tempInitialValue = tempInitialValue + 5
+                        humidityInitialValue = humidityInitialValue + 2
+
+                        channel = 12
+                        data = []
+                        j = 0
+
+                        GPIO.setmode(GPIO.BOARD)
+        
+                        time.sleep(1)
+
+                        GPIO.setup(channel, GPIO.OUT)
+
+                        GPIO.output(channel, GPIO.LOW)
+                        time.sleep(0.02) 
+                        GPIO.output(channel, GPIO.HIGH)
+
+                        GPIO.setup(channel, GPIO.IN)
+
+                        while GPIO.input(channel) == GPIO.LOW:
+                            continue
+
+                        while GPIO.input(channel) == GPIO.HIGH:
+                            continue
+
+                        while j < 40:
+                            k = 0
+                            while GPIO.input(channel) == GPIO.LOW:
+                                continue
+
+                            while GPIO.input(channel) == GPIO.HIGH:
+                                k += 1
+                                if k > 100:
+                                    break
+
+                            if k < 8:
+                                data.append(0)
+                            else:
+                                data.append(1)
+
+                            j += 1
+
+                        #print data               
+            
+                        humidity_bit = data[0:8]
+                        humidity_point_bit = data[8:16]
+                        temperature_bit = data[16:24]
+                        temperature_point_bit = data[24:32]
+                        check_bit = data[32:40]
+
+                        humidity = 0
+                        humidity_point = 0
+                        temperature = 0
+                        temperature_point = 0
+                        check = 0
+
+                
+                        for i in range(8):
+                            humidity += humidity_bit[i] * 2 ** (7 - i)
+                            humidity_point += humidity_point_bit[i] * 2 ** (7 - i)
+                            temperature += temperature_bit[i] * 2 ** (7 - i)
+                            temperature_point += temperature_point_bit[i] * 2 ** (7 - i)
+                            check += check_bit[i] * 2 ** (7 - i)
+        
+                        tmp = humidity + humidity_point + temperature + temperature_point
+
+                        temperature = (temperature * 1.8) + 32
+
+                        print(str(temperature) + " F")
+
+                        if fanTimer == 0:
+                                motorStop()
+
+                        #if alarmTimer == 0:
+                        #        GPIO.output(BeepPin, GPIO.HIGH) 
+
+                        if temperature > upperLimitNum:
+                            fanTimer = fanTimer + 1
+                            alarmTimer = alarmTimer + 1
+
+                            
+                        if fanTimer == 6:
+                                print("Fan starts")
+                                motorStart()
+
+                        if alarmTimer == 10:
+                                motorStop()
+                                loop()
+                                LedLoop()
+
+                        #time.sleep(5)
+
+                        print 'Distance: %0.2f m' %checkdist()
+
+                        if temperature < upperLimitNum:
+                                alarmTimer = 0
+                                fanTimer = 0
+                                motorStop()
+                                
+		#if temperature goes beyond endLimit turn on fan
+		#if temperature goes below startLimit turn on heat lamp
+		#if unable to bring back to threshold start beeping and send out email
+		#bring temperature down to startLimit and turn off fan
+		#move temperature up to endLimit and turn off heat lamp
+
+                        if GPIO.input(PIR_OUT_PIN) == GPIO.LOW:
+                            movementInitialValue = 0
+                        else:
+                            movementInitialValue = 10
+                            print('Baby movement detected')
+
+                        json_python['labels'].append(labelcounter)
+                        json_python['datasets'][0]['data'].append(temperature)
+                        if fanTimer > 6:
+                                json_python['datasets'][0]['backgroundColor'] = "rgba(226,33,33,0.4)"
+                        else:
+                                json_python['datasets'][0]['backgroundColor'] = "rgba(153,255,51,0.4)"
+
+                        json_python['datasets'][1]['data'].append(humidity)
+                        json_python['datasets'][2]['data'].append(movementInitialValue)
+                        #print(json_python) 
+                        result1 = requests.post(firebase_url + '/' + 'location' + '/temperature.json' , data=json.dumps(chartdata))
+                        chartdata = json_python
+
+		#if stop value is passed set start to false
+		#reset all the sensor values 
+		#humidityInitialValue = 0
+		#temperatureInitialValue = 0
+		#movementInitialValue = 0
+
+                        start = True
+
+                except IOError:
+                        print('Error reading sensor data.')
+except KeyboardInterrupt:
+    print('Cleaning up system')
+    GPIO.output(BeepPin, GPIO.HIGH) 
+    motorStop()
+    destroy()
+    GPIO.cleanup();
